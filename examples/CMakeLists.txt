@@ -28,4 +28,12 @@ foreach(src IN LISTS examples)
     LIBRARIES_TO_LINK
       ${Q2NS_EXAMPLE_LIBS}
   )
+
+  # q2nsviz examples write trace JSON files;
+  if(name MATCHES "^q2nsviz-")
+    target_compile_definitions(
+      ${name} PRIVATE
+      Q2NS_EXAMPLE_TRACES_DIR="${CMAKE_CURRENT_LIST_DIR}/example_traces/"
+    )
+  endif()
 endforeach()

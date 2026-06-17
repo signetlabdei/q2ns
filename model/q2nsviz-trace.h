@@ -17,18 +17,21 @@
 #include <vector>
 
 /*
-  v1 NDJSON schema (viewer.html expects these):
+  v2 NDJSON schema (viewer.html expects these):
     - createNode     {t_ns, label, x, y}
     - createChannel  {t_ns, from, to, kind}
-    - createBit      {t_ns, node, label, kind, color}
-    - setBitColor    {t_ns, bit, color}
-    - entangle       {t_ns, bits:[...]}                       // or {t_ns, duration_ns, bits:[...]}
-    - measure        {t_ns, bit, base, b0}              // or {t_ns, duration_ns, bit, base}
-    - graphMeasure   {t_ns, bit, base, supportNode}    // or {t_ns, duration_ns, bit, base, supportNode}
-    - sendBit        {t0_ns, t1_ns, bit, from, to, kind}
-    - sendPacket     {t0_ns, t1_ns, from, to, label}
-    - traceText      {t_ns, text}                 // trace panel (persistent)
-    - traceText      {t_ns, node, text}           // node-local (one step)
+    - createQubit    {t_ns, node, label}
+    - createCbit     {t_ns, node, label}
+    - entangle       {t_ns, bits:[...]}                 // or {t_ns, duration_ns, bits:[...]}
+    - measure        {t_ns, bit, base}                  // or {t_ns, duration_ns, bit, base}
+    - graphMeasure   {t_ns, bit, base, supportNode}     // or {t_ns, duration_ns, bit, base, supportNode}
+    - sendQubit      {t0_ns, t1_ns, bit, from, to}
+    - sendCbit       {t0_ns, t1_ns, bit, from, to}
+    - sendPacket     {t0_ns, t1_ns, from, to, label[, protocol]}
+    - removeQubit    {t_ns, bit, reason}                // reason: "lost" | "discarded"
+    - removeCbit     {t_ns, bit}
+    - traceText      {t_ns, text}                       // trace panel (persistent)
+    - traceText      {t_ns, node, text}                 // node-local (one step)
 */
 
 /*-----------------------------------------------------------------------------
@@ -66,25 +69,38 @@ inline void TraceCreateChannel(const std::string& from, const std::string& to,
 }
 
 /*-----------------------------------------------------------------------------
- * Bits: create / color / entangle / measure
+ * Qubits: create / entangle / measure
  *---------------------------------------------------------------------------*/
-inline void TraceCreateBit(const std::string& node, const std::string& bitLabel,
-                           const std::string& kind, const std::string& color) {
+inline void TraceCreateQubit(const std::string& node, const std::string& bitLabel) {
   std::ostringstream o;
   o << "{"
-    << "\"type\":\"createBit\",\"t_ns\":" << JTns() << ",\"node\":" << J(node)
-    << ",\"label\":" << J(bitLabel) << ",\"kind\":" << J(kind) << ",\"color\":" << J(color) << "}";
+    << "\"type\":\"createQubit\",\"t_ns\":" << JTns() << ",\"node\":" << J(node)
+    << ",\"label\":" << J(bitLabel) << "}";
   TraceWriter::Instance().Write(o.str());
 }
 
-inline void TraceSetBitColor(const std::string& bitLabel, const std::string& color) {
+/*-----------------------------------------------------------------------------
+ * Classical bits: create / remove
+ *---------------------------------------------------------------------------*/
+inline void TraceCreateCbit(const std::string& node, const std::string& bitLabel) {
   std::ostringstream o;
   o << "{"
-    << "\"type\":\"setBitColor\",\"t_ns\":" << JTns() << ",\"bit\":" << J(bitLabel)
-    << ",\"color\":" << J(color) << "}";
+    << "\"type\":\"createCbit\",\"t_ns\":" << JTns() << ",\"node\":" << J(node)
+    << ",\"label\":" << J(bitLabel) << "}";
   TraceWriter::Instance().Write(o.str());
 }
 
+inline void TraceRemoveCbit(const std::string& bitLabel, uint64_t t_ns = NowNs()) {
+  std::ostringstream o;
+  o << "{"
+    << "\"type\":\"removeCbit\","
+    << "\"t_ns\":" << t_ns << ",\"bit\":" << J(bitLabel) << "}";
+  TraceWriter::Instance().Write(o.str());
+}
+
+/*-----------------------------------------------------------------------------
+ * Qubit entanglement and measurement
+ *---------------------------------------------------------------------------*/
 inline void TraceEntangle(const std::vector<std::string>& bits) {
   std::ostringstream o;
   o << "{"
@@ -177,45 +193,62 @@ inline void TraceGraphMeasure(const std::string& bitLabel, ns3::Time duration,
   TraceGraphMeasure(bitLabel, duration.GetNanoSeconds(), base, supportNode);
 }
 
-inline void TraceRemoveBit(const std::string& bitLabel, uint64_t t_ns = NowNs()) {
+inline void TraceRemoveQubit(const std::string& bitLabel,
+                             const std::string& reason = "discarded",
+                             uint64_t t_ns = NowNs()) {
   std::ostringstream o;
   o << "{"
-    << "\"type\":\"removeBit\","
-    << "\"t_ns\":" << t_ns << ",\"bit\":" << J(bitLabel) << "}";
+    << "\"type\":\"removeQubit\","
+    << "\"t_ns\":" << t_ns << ",\"bit\":" << J(bitLabel)
+    << ",\"reason\":" << J(reason) << "}";
   TraceWriter::Instance().Write(o.str());
 }
 
 
 /*-----------------------------------------------------------------------------
- * Movement: sendBit & sendPacket
+ * Movement: sendQubit, sendCbit & sendPacket
  *---------------------------------------------------------------------------*/
-inline void TraceSendBit(const std::string& bitLabel, const std::string& from,
-                         const std::string& to, const std::string& kind, uint64_t t0_ns,
-                         uint64_t t1_ns) {
+inline void TraceSendQubit(const std::string& bitLabel, const std::string& from,
+                           const std::string& to, uint64_t t0_ns, uint64_t t1_ns) {
   std::ostringstream o;
   o << "{"
-    << "\"type\":\"sendBit\",\"t0_ns\":" << t0_ns << ",\"t1_ns\":" << t1_ns
-    << ",\"bit\":" << J(bitLabel) << ",\"from\":" << J(from) << ",\"to\":" << J(to)
-    << ",\"kind\":" << J(kind) << "}";
+    << "\"type\":\"sendQubit\",\"t0_ns\":" << t0_ns << ",\"t1_ns\":" << t1_ns
+    << ",\"bit\":" << J(bitLabel) << ",\"from\":" << J(from) << ",\"to\":" << J(to) << "}";
   TraceWriter::Instance().Write(o.str());
 }
-inline void TraceSendBit(const std::string& bitLabel, const std::string& from,
-                         const std::string& to, const std::string& kind, ns3::Time t0,
-                         ns3::Time t1) {
-  TraceSendBit(bitLabel, from, to, kind, t0.GetNanoSeconds(), t1.GetNanoSeconds());
+inline void TraceSendQubit(const std::string& bitLabel, const std::string& from,
+                           const std::string& to, ns3::Time t0, ns3::Time t1) {
+  TraceSendQubit(bitLabel, from, to, t0.GetNanoSeconds(), t1.GetNanoSeconds());
+}
+
+inline void TraceSendCbit(const std::string& bitLabel, const std::string& from,
+                          const std::string& to, uint64_t t0_ns, uint64_t t1_ns) {
+  std::ostringstream o;
+  o << "{"
+    << "\"type\":\"sendCbit\",\"t0_ns\":" << t0_ns << ",\"t1_ns\":" << t1_ns
+    << ",\"bit\":" << J(bitLabel) << ",\"from\":" << J(from) << ",\"to\":" << J(to) << "}";
+  TraceWriter::Instance().Write(o.str());
+}
+inline void TraceSendCbit(const std::string& bitLabel, const std::string& from,
+                          const std::string& to, ns3::Time t0, ns3::Time t1) {
+  TraceSendCbit(bitLabel, from, to, t0.GetNanoSeconds(), t1.GetNanoSeconds());
 }
 
 inline void TraceSendPacket(const std::string& from, const std::string& to, uint64_t t0_ns,
-                            uint64_t t1_ns, const std::string& label) {
+                            uint64_t t1_ns, const std::string& label,
+                            const std::string& protocol = "") {
   std::ostringstream o;
   o << "{"
     << "\"type\":\"sendPacket\",\"t0_ns\":" << t0_ns << ",\"t1_ns\":" << t1_ns
-    << ",\"from\":" << J(from) << ",\"to\":" << J(to) << ",\"label\":" << J(label) << "}";
+    << ",\"from\":" << J(from) << ",\"to\":" << J(to) << ",\"label\":" << J(label);
+  if (!protocol.empty()) { o << ",\"protocol\":" << J(protocol); }
+  o << "}";
   TraceWriter::Instance().Write(o.str());
 }
 inline void TraceSendPacket(const std::string& from, const std::string& to, ns3::Time t0,
-                            ns3::Time t1, const std::string& label) {
-  TraceSendPacket(from, to, t0.GetNanoSeconds(), t1.GetNanoSeconds(), label);
+                            ns3::Time t1, const std::string& label,
+                            const std::string& protocol = "") {
+  TraceSendPacket(from, to, t0.GetNanoSeconds(), t1.GetNanoSeconds(), label, protocol);
 }
 
 /*-----------------------------------------------------------------------------

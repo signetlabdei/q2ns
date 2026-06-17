@@ -27,10 +27,12 @@
       --stroke: #bdc3c7;
       --stroke-strong: #7f8c8d;
       --quantum: #4745dbba;
-      --classic: #f39c12;
-      --accent: #e74c3c;
+      --classic: #f39d12d4;
+      --accent: #e74d3cce;
       --text-light: #7f8c8d;
       --shadow: rgba(0, 0, 0, 0.08);
+      --qubit-product: #327bcfbe;
+      --qubit-entangled: #9427a3b7;
     }
 
     /* --- Base layout --- */
@@ -262,7 +264,7 @@
     /* Text labels displayed below nodes */
     .nodetext {
       font-size: 13px;
-      fill: var(--accent);
+      fill: var(--ink);
       text-anchor: middle;
       dominant-baseline: hanging;
       pointer-events: none;
@@ -452,6 +454,24 @@
       // Communication channel offset
       const CHAN_OFFSET = 12;
 
+      // Semantic qubit and classical-bit colors (match Python theme).
+      const QUBIT_PRODUCT   = '#0969da';  // isolated (non-entangled) qubit — blue
+      const QUBIT_ENTANGLED = '#9527a3';  // qubit in an entanglement cluster — purple
+      const CBIT_COLOR      = '#cc6600';  // classical bit — orange
+      
+      // Protocol-specific classical packet colors (match Python theme)
+      const PACKET_COLORS = { tcp: '#1a7f37', udp: '#bc4c00' };
+
+      /**
+       * Return the semantic render color for a qubit based on its entanglement state.
+       * A qubit with at least one entanglement partner is shown in QUBIT_ENTANGLED;
+       * otherwise it is shown in QUBIT_PRODUCT.
+       */
+      function semanticQubitColor(bitLabel) {
+        const neighbors = state.entanglementGraph.get(bitLabel);
+        return (neighbors && neighbors.size > 0) ? QUBIT_ENTANGLED : QUBIT_PRODUCT;
+      }
+
       async function fetchText(url) {
         const r = await fetch(url, { cache: 'no-cache' });
         if (!r.ok) throw new Error(`Failed to fetch ${url}: ${r.status}`);
@@ -490,12 +510,22 @@
               to: e.to, 
               kind: (e.kind === 'custom' ? 'quantum' : e.kind) 
             });
-          } else if (e.type === 'createBit') {
+          } else if (e.type === 'createQubit') {
             if (!state.bits.has(e.label)) state.bits.set(e.label, {});
+          } else if (e.type === 'createCbit') {
+            if (!state.cbits.has(e.label)) state.cbits.set(e.label, {});
           }
         }
 
         computeNodeAnchors();
+
+        // Rebuild event-time lookup index for node-local trace annotations
+        eventsAt = new Map();
+        for (const e of events) {
+          const key = e.t_ns ?? e.t0_ns ?? 0;
+          if (!eventsAt.has(key)) eventsAt.set(key, []);
+          eventsAt.get(key).push(e);
+        }
 
         buildTimeline();
 
@@ -755,28 +785,26 @@
 
 
       /*
-       * Supported v1 schema events:
+       * Supported v2 schema events:
        * 
-       * Static Structure:
-       * - createNode {label, x, y}              : Create a network node at position (x%, y%)
-       * - createChannel {from, to, kind}        : Create communication channel ("classical"|"quantum")
-       * - createBit {node, label, kind, color}  : Create a qubit at specified node
-       * 
-       * Quantum Operations:
-       * - entangle {bits: [labels...]}          : Create entanglement between multiple qubits
-       * - measure {bit, t_ns, basis?, b0?}      : Generic measurement (simple qubit removal)
-       * - graphMeasure {bit, t_ns, basis?, supportNode?} : Graph state measurement with transformations
-       *   - basis/measurementBasis/base/measurement_basis: "X"|"Y"|"Z" (default: "Z") - measurement basis
-       *   - supportNode/b0/support_node/ancilla: support node for X measurements (optional, auto-selects if not provided)
-       * - setBitColor {bit, color}              : Change visual representation
-       * 
-       * Communication:
-       * - sendBit {bit, from, to, kind, t0_ns, t1_ns}    : Transfer qubit between nodes
-       * - sendPacket {from, to, label, t0_ns, t1_ns}     : Send classical packet
-       * 
-       * Tracing:
-       * - traceText {text}                            : Global trace entry
-       * - traceText {node, text}                      : Node-specific trace entry
+       * - createNode {label, x, y}                         : Create a network node at position (x%, y%)
+       * - createChannel {from, to, kind}                   : Create communication channel ("classical"|"quantum")
+       * - createQubit {node, label}                        : Create a qubit at specified node
+       * - sendQubit {bit, from, to, t0_ns, t1_ns}          : Transfer qubit between nodes
+       * - removeQubit {bit, reason?, t_ns}                 : Destroy qubit (reason: "discarded"|"lost")
+       * - createCbit {node, label}                         : Create a classical bit at specified node
+       * - sendCbit {bit, from, to, t0_ns, t1_ns}           : Transfer cbit between nodes
+       * - removeCbit {bit, t_ns}                           : Destroy cbit at destination
+       * - entangle {bits: [labels...]}                     : Toggle entanglement between all qubit pairs in the list.
+       *                                                      Calling it twice on the same pair dis-entangles them
+       *                                                      (models a generic entangling operation(s) applied twice).
+       * - measure {bit, t_ns, basis?, b0?}                 : Generic measurement (simple qubit removal)
+       * - graphMeasure {bit, t_ns, basis?, supportNode?}   : Graph state measurement with transformations
+       *                                                      "X"|"Y"|"Z" (default: "Z") - measurement basis
+       *                                                      supportNode: support node for X measurements 
+       * - sendPacket {from, to, label, t0_ns, t1_ns}       : Send classical packet
+       * - traceText {text}                                 : Global trace entry
+       * - traceText {node, text}                           : Node-specific trace entry
        */
 
       let tMax = 0;
@@ -810,12 +838,8 @@
         timeArray = Array.from(timeSet).sort((a, b) => a - b);
       }
 
-      // Create fast event lookup index by time
-      const eventsAt = new Map(); // ns -> Event[]
-      for (const e of events) {
-        const key = e.t_ns ?? e.t0_ns ?? 0;
-        (eventsAt.get(key) || eventsAt.set(key, []), eventsAt.get(key)).push(e);
-      }
+      // Event-time lookup index for node-local trace annotations; rebuilt in initializeFromEvents()
+      let eventsAt = new Map();
 
       let state = createEmptyState();
 
@@ -824,18 +848,12 @@
        * @returns {Object} New state with empty collections and utility functions
        */
       function createEmptyState() {
-        const pal = d3.schemeTableau10.concat(d3.schemeCategory10);
-        
-        const colorOf = (label) => {
-          return '#8e44ad'; // Consistent purple for all qubits
-        };
-        
         return {
           nodes: new Map(),             // label -> {xPct, yPct, anchorTop?, cx?}
           channels: [],                 // {from, to, kind}
-          bits: new Map(),              // bitLabel -> {node?, color?, kind?}
+          bits: new Map(),              // bitLabel -> {node?}
+          cbits: new Map(),             // cbitLabel -> {node?}
           entanglementGraph: new Map(), // qubitLabel -> Set(entangled qubits)
-          colorOf
         };
       }
 
@@ -860,15 +878,23 @@
        * @param {string} qubit1 - First qubit identifier
        * @param {string} qubit2 - Second qubit identifier
        */
+      /**
+       * Toggle entanglement between two qubits.
+       * Calling this for a pair that is already entangled removes the link.
+       * This models a generic entangling operation(s) sequence: applying the same sequence twice
+       * is the identity, so a second entangle event on the same pair dis-entangles them.
+       */
       function addEntanglementLink(qubit1, qubit2) {
-        if (!state.entanglementGraph.has(qubit1)) {
-          state.entanglementGraph.set(qubit1, new Set());
+        if (!state.entanglementGraph.has(qubit1)) state.entanglementGraph.set(qubit1, new Set());
+        if (!state.entanglementGraph.has(qubit2)) state.entanglementGraph.set(qubit2, new Set());
+        if (state.entanglementGraph.get(qubit1).has(qubit2)) {
+          // Already entangled - second application removes the edge
+          state.entanglementGraph.get(qubit1).delete(qubit2);
+          state.entanglementGraph.get(qubit2).delete(qubit1);
+        } else {
+          state.entanglementGraph.get(qubit1).add(qubit2);
+          state.entanglementGraph.get(qubit2).add(qubit1);
         }
-        if (!state.entanglementGraph.has(qubit2)) {
-          state.entanglementGraph.set(qubit2, new Set());
-        }
-        state.entanglementGraph.get(qubit1).add(qubit2);
-        state.entanglementGraph.get(qubit2).add(qubit1);
       }
 
       /**
@@ -894,7 +920,7 @@
        * @param {string} target - Target vertex for local complementation
        * @param {boolean} verbose - Whether to trace the operation
        */
-      function localComplementation(target, verbose = true) {
+      function localComplementation(target, verbose = false) {
         if (!state.entanglementGraph.has(target)) {
           if (verbose) console.log(`Warning: Node ${target} not found in entanglement graph`);
           return;
@@ -942,7 +968,7 @@
        * @param {string} target - Target qubit to measure
        * @param {boolean} verbose - Whether to trace the operation
        */
-      function graphZMeasurement(target, verbose = true) {
+      function graphZMeasurement(target, verbose = false) {
         if (verbose) {
           console.log(`** Graph State Z Measurement on node ${target} **`);
         }
@@ -955,7 +981,7 @@
        * @param {string} target - Target qubit to measure
        * @param {boolean} verbose - Whether to trace the operation
        */
-      function graphYMeasurement(target, verbose = true) {
+      function graphYMeasurement(target, verbose = false) {
         if (verbose) {
           console.log(`** Graph State Y Measurement on node ${target} **`);
         }
@@ -970,7 +996,7 @@
        * @param {string} supportNode - Optional support node (if not provided, chooses minimum neighbor)
        * @param {boolean} verbose - Whether to trace the operation
        */
-      function graphXMeasurement(target, supportNode = null, verbose = true) {
+      function graphXMeasurement(target, supportNode = null, verbose = false) {
         if (verbose) {
           console.log(`** Graph State X Measurement on node ${target} **`);
         }
@@ -1019,10 +1045,9 @@
       function getQubitPosition(qubit, bounds, rowAnchors) {
         // Check if qubit is currently in transit
         for (const e of events) {
-          if (e.type === 'sendBit' && e.bit === qubit && t_ns >= e.t0_ns && t_ns <= e.t1_ns) {
+          if (e.type === 'sendQubit' && e.bit === qubit && t_ns >= e.t0_ns && t_ns < e.t1_ns) {
             const pos = posForSendBit(e, t_ns, bounds);
             if (pos) {
-              console.log(`Qubit ${qubit} is in flight, position:`, pos);
               return { x: pos.x, y: pos.y, cx: pos.x, cy: pos.y };
             }
           }
@@ -1031,7 +1056,6 @@
         // Get position from node storage
         const bitInfo = state.bits.get(qubit);
         if (!bitInfo || !bitInfo.node) {
-          console.log(`No bit info for qubit ${qubit}`);
           return null;
         }
         
@@ -1050,19 +1074,16 @@
                   const n = nodeMembers.length;
                   const totalW = (n - 1) * BIT_SPACING;
                   const x = rowCenter.x - totalW / 2 + qubitIndex * BIT_SPACING;
-                  console.log(`Qubit ${qubit} in group storage at:`, { x: x, y: rowCenter.y });
               return { x: x, y: rowCenter.y, cx: x, cy: rowCenter.y };
             }
           }
           
           // Single qubit or fallback to row center
-          console.log(`Qubit ${qubit} at row center:`, rowCenter);
           return rowCenter;
         }
       }
     }
-    
-    console.log(`Could not find position for qubit ${qubit}`);
+
     return null;
   }
 
@@ -1123,61 +1144,60 @@
   function reduceTo(t_ns){
     // Reset dynamic pieces
     state.bits.clear();
+    state.cbits.clear();
     state.entanglementGraph.clear();
     
-    // Re-apply creates & colors deterministically up to t_ns
+    // Re-apply creates deterministically up to t_ns
     for (const e of events) {
-      if (e.type === 'createBit' && e.t_ns <= t_ns) {
+      if (e.type === 'createQubit' && e.t_ns <= t_ns) {
         const bitLabel = e.label || e.bit; // Support both 'label' and 'bit' fields
-        // Use explicit color if provided, otherwise use default
-        const color = e.color || state.colorOf(bitLabel);
-        state.bits.set(bitLabel, { node: e.node, kind: e.kind, color });
-        console.log('Created bit:', bitLabel, 'at node:', e.node, 'color:', color);
-      } else if (e.type === 'setBitColor' && e.t_ns <= t_ns) {
-        const b = state.bits.get(e.bit); if (b) b.color = e.color;
-      } else if (e.type === 'sendBit' && e.t1_ns <= t_ns) {
-        // When a send finishes, snap bit to destination node
+        state.bits.set(bitLabel, { node: e.node });
+      } else if (e.type === 'sendQubit' && e.t1_ns <= t_ns) {
+        // When a send finishes, snap qubit to destination node
         const b = state.bits.get(e.bit);
         if (b) b.node = e.to;
+      } else if (e.type === 'createCbit' && e.t_ns <= t_ns) {
+        const cbitLabel = e.label || e.bit;
+        state.cbits.set(cbitLabel, { node: e.node });
+      } else if (e.type === 'sendCbit' && e.t1_ns <= t_ns) {
+        // When a cbit send finishes, snap to destination node
+        const c = state.cbits.get(e.bit);
+        if (c) c.node = e.to;
+      } else if (e.type === 'removeCbit' && e.t_ns <= t_ns) {
+        state.cbits.delete(e.bit);
       } else if (e.type === 'entangle' && e.t_ns <= t_ns) {
         // Process entanglement events: create links between all pairs
         const qubits = e.bits;
-        console.log('Processing entangle event at t_ns =', e.t_ns, 'qubits:', qubits);
         for (let i = 0; i < qubits.length; i++) {
           for (let j = i + 1; j < qubits.length; j++) {
-            console.log(`Adding entanglement link: ${qubits[i]} <-> ${qubits[j]}`);
             addEntanglementLink(qubits[i], qubits[j]);
           }
         }
-        // The trace should show the individual entanglement operations
-        // Note: In practice, the trace entries should be generated by the simulation
-        // showing "Entangled qubits: A <-> B" for each pair
+        // Toggle semantics: the same qubit pair can be dis-entangled by a second entangle event.
       } else if (e.type === 'measure' && e.t_ns <= t_ns) {
-        // Generic measurement - just removes the qubit without graph transformations
+        // Measurement collapses the qubit: remove from entanglement graph and storage.
         const target = e.bit;
-        console.log(`Processing generic measurement on qubit ${target}`);
         removeQubitFromGraph(target);
+        state.bits.delete(target);
       } else if (e.type === 'graphMeasure' && e.t_ns <= t_ns) {
         // Graph state measurement with transformations
         const measurementBasis = e.basis || e.measurementBasis || e.base || e.measurement_basis || 'Z'; // Default to Z-basis
         const target = e.bit;
         const supportNode = e.supportNode || e.b0 || e.support_node || e.ancilla || null;
-        
-        console.log(`Processing graph state ${measurementBasis}-basis measurement on qubit ${target}${supportNode ? ` with support node ${supportNode}` : ''}`);
-        
+
         switch (measurementBasis.toUpperCase()) {
           case 'Z':
-            graphZMeasurement(target, true);
+            graphZMeasurement(target);
             break;
           case 'Y':
-            graphYMeasurement(target, true);
+            graphYMeasurement(target);
             break;
           case 'X':
-            graphXMeasurement(target, supportNode, true);
+            graphXMeasurement(target, supportNode);
             break;
           default:
             console.warn(`Unknown measurement basis: ${measurementBasis}, defaulting to Z measurement`);
-            graphZMeasurement(target, true);
+            graphZMeasurement(target);
         }
       }
     }
@@ -1461,7 +1481,6 @@
         const n = row.bits.length;
         const totalW = (n-1)*BIT_SPACING;
         const xs = Array.from({length:n}, (_,i)=> cx - totalW/2 + i*BIT_SPACING);
-        const col = state.bits.get(row.bits[0])?.color || state.colorOf(row.bits[0]);
 
         // Show row label without wave pattern background
         rg.append('text').attr('class','rowLabel')
@@ -1470,14 +1489,13 @@
 
         xs.forEach((x,i)=>{
           const b = row.bits[i];
-          const c = state.bits.get(b)?.color || state.colorOf(b);
           rg.append('circle').attr('class','bit').attr('r', BIT_R)
-            .attr('cx', x).attr('cy', y).attr('fill', c)
+            .attr('cx', x).attr('cy', y).attr('fill', QUBIT_ENTANGLED)
             .attr('stroke', 'var(--stroke-strong)').attr('stroke-width', 1.5);
         });
       } else {
         const bit = row.bits[0];
-        const col = state.bits.get(bit)?.color || state.colorOf(bit);
+        const col = semanticQubitColor(bit);
         rg.append('text').attr('class','rowLabel')
           .attr('x', cx).attr('y', y - (BIT_R + 22)).attr('text-anchor','middle')
           .text(bit);
@@ -1494,101 +1512,76 @@
   // --- Qubit entanglement links ---
   function drawQubitEntanglementLinks(linkG, bounds, rowAnchors, removedBits = new Set()){
     const linkData = [];
-    
-    // Debug: Trace the current state of the entanglement graph
-    if (Object.keys(state.entanglementGraph).length > 0) {
-      console.log('Entanglement graph at t_ns =', t_ns, ':', state.entanglementGraph);
-    }
-    
-    // Process each qubit and its entangled partners
+
     for (const [qubit1, entangledQubits] of state.entanglementGraph) {
       if (removedBits.has(qubit1)) continue;
-      
       const pos1 = getQubitPosition(qubit1, bounds, rowAnchors);
-      if (!pos1) {
-        continue;
-      }
-      
+      if (!pos1) continue;
+
       for (const qubit2 of entangledQubits) {
         if (removedBits.has(qubit2)) continue;
-        if (qubit1 >= qubit2) continue; // Only draw each link once
-        
+        if (qubit1 >= qubit2) continue; // draw each pair once
         const pos2 = getQubitPosition(qubit2, bounds, rowAnchors);
-        if (!pos2) {
-          continue;
-        }
-        
-        const color1 = state.bits.get(qubit1)?.color || state.colorOf(qubit1);
-        const color2 = state.bits.get(qubit2)?.color || state.colorOf(qubit2);
-        
-        console.log(`Creating entanglement link: ${qubit1} <-> ${qubit2}`);
-        
+        if (!pos2) continue;
         linkData.push({
           id: `entangle-${qubit1}-${qubit2}`,
           d: wiggly(pos1, pos2),
-          color: color1, // Use color of first qubit
-          qubit1: qubit1,
-          qubit2: qubit2
+          qubit1, qubit2
         });
       }
     }
-
-    console.log('LinkData:', linkData);
 
     const sel = linkG.selectAll('path.qubitLink').data(linkData, d => d.id);
     sel.join(
       enter => enter.append('path')
         .attr('class', 'entanglementWave qubitLink')
-        .attr('stroke', d => d.color)
+        .attr('stroke', QUBIT_ENTANGLED)
         .attr('d', d => d.d)
-        .append('title') // Add tooltip showing which qubits are linked
-        .text(d => `Entangled: ${d.qubit1} <-> ${d.qubit2}`),
+        .append('title')
+        .text(d => `Entangled: ${d.qubit1} ↔ ${d.qubit2}`),
       update => update
-        .attr('stroke', d => d.color)
+        .attr('stroke', QUBIT_ENTANGLED)
         .attr('d', d => d.d)
         .select('title')
-        .text(d => `Entangled: ${d.qubit1} <-> ${d.qubit2}`),
+        .text(d => `Entangled: ${d.qubit1} ↔ ${d.qubit2}`),
       exit => exit.remove()
     );
   }
 
   // --- Cross-node entanglement ---
   function drawEntanglementLinks(linkG, bounds, groups, rowAnchors, removedBits = new Set()){
-    // inflight positions
+    // Collect positions of in-flight qubits
     const inflightPos = new Map();
     for (const e of events) {
-      if (e.type!=='sendBit') continue;
-      if (t_ns < e.t0_ns || t_ns > e.t1_ns) continue;
+      if (e.type!=='sendQubit') continue;
+      if (t_ns < e.t0_ns || t_ns >= e.t1_ns) continue;
       const p = posForSendBit(e, t_ns, bounds);
       if (!p) continue;
-      const col = state.bits.get(e.bit)?.color || state.colorOf(e.bit);
-      inflightPos.set(e.bit, { x:p.x, y:p.y, color:col });
+      inflightPos.set(e.bit, { x:p.x, y:p.y });
     }
 
     const linkData = [];
     for (const [root, members] of groups) {
       const endpoints = [];
 
-      // node-row endpoints: use actual row center if present for this group
+      // Stored endpoints: one per distinct node where group members reside
       const nodesSeen = new Set();
       for (const m of members) {
         const node = state.bits.get(m)?.node;
         if (!node) continue;
         if (inflightPos.has(m)) continue; // this member is moving; don't count it as stored
         if (nodesSeen.has(node)) continue;
-
         const b  = bounds.get(node);
         const ra = rowAnchors.get(node)?.get(root);
         if (!b || !ra) continue;
-        const color = state.bits.get(m)?.color || state.colorOf(m);
-        endpoints.push({ x: ra.x, y: ra.y, color });
+        endpoints.push({ x: ra.x, y: ra.y });
         nodesSeen.add(node);
       }
 
-      // inflight endpoints: one per moving member
+      // Inflight endpoints: one per moving member
       for (const m of members) {
         const p = inflightPos.get(m);
-        if (p) endpoints.push({ x:p.x, y:p.y, color:p.color, inflight:true });
+        if (p) endpoints.push({ x:p.x, y:p.y, inflight:true });
       }
 
       if (endpoints.length <= 1) continue;
@@ -1598,8 +1591,7 @@
         const A = endpoints[i], B = endpoints[i+1];
         linkData.push({
           id:`${root}-${i}-${Math.round(A.x)}-${Math.round(B.x)}`,
-          d: wiggly({cx:A.x, cy:A.y}, {cx:B.x, cy:B.y}),
-          color: A.color
+          d: wiggly({cx:A.x, cy:A.y}, {cx:B.x, cy:B.y})
         });
       }
     }
@@ -1607,10 +1599,9 @@
     const sel = linkG.selectAll('path.groupLink').data(linkData, d=>d.id);
     sel.join(
       enter => enter.append('path')
-        // give both classes so CSS for entanglementWave applies to inter-node links too
         .attr('class','entanglementWave groupLink')
-        .attr('stroke', d=>d.color).attr('d', d=>d.d),
-      update => update.attr('stroke', d=>d.color).attr('d', d=>d.d),
+        .attr('stroke', QUBIT_ENTANGLED).attr('d', d=>d.d),
+      update => update.attr('stroke', QUBIT_ENTANGLED).attr('d', d=>d.d),
       exit   => exit.remove()
     );
   }
@@ -1631,7 +1622,7 @@
 
   // --- In-flight positions ---
   function posForSendBit(evt, t_ns, bounds){
-    if (t_ns < evt.t0_ns || t_ns > evt.t1_ns) return null;
+    if (t_ns < evt.t0_ns || t_ns >= evt.t1_ns) return null;
     const u = (t_ns - evt.t0_ns) / (evt.t1_ns - evt.t0_ns);
     const UP=0.2, ACROSS=0.6, DOWN=0.2;
 
@@ -1643,7 +1634,8 @@
     const dstBay   = { x: dst.bay.x + dst.bay.w/2, y: dst.bay.y + dst.bay.h/2 };
     const dstStore = { x: dst.cx, y: dst.storage.y + dst.storage.h/2 };
 
-    const { a:ch0, b:ch1 } = channelEndpoints(evt.from, evt.to, evt.kind, bounds);
+
+    const { a:ch0, b:ch1 } = channelEndpoints(evt.from, evt.to, evt.kind ?? 'quantum', bounds);
 
     if (u <= UP){
       const v = u/UP;
@@ -1658,7 +1650,7 @@
   }
 
   function posForPacket(evt, t_ns, bounds){
-    if (t_ns < evt.t0_ns || t_ns > evt.t1_ns) return null;
+    if (t_ns < evt.t0_ns || t_ns >= evt.t1_ns) return null;
     const u = (t_ns - evt.t0_ns) / (evt.t1_ns - evt.t0_ns);
 
     // A packet may travel in the reverse direction from how the channel was registered.
@@ -1683,12 +1675,12 @@
   // --- Draw moving objects ---
   function drawInflightBits(linkG, bounds, t_ns, removedBits = new Set()){
     const flights = events
-      .filter(e => e.type==='sendBit' && t_ns>=e.t0_ns && t_ns<=e.t1_ns)
+      .filter(e => e.type==='sendQubit' && t_ns>=e.t0_ns && t_ns<e.t1_ns)
       .filter(e => !removedBits.has(e.bit))
       .map(e => {
         const p = posForSendBit(e, t_ns, bounds);
         if (!p) return null;
-        const col = state.bits.get(e.bit)?.color || state.colorOf(e.bit);
+        const col = semanticQubitColor(e.bit);
         return { id:`bit-${e.bit}-${e.t0_ns}`, x:p.x, y:p.y, color:col, label:e.bit };
       })
       .filter(Boolean);
@@ -1716,20 +1708,50 @@
 
 
   function drawPackets(pktG, bounds, t_ns){
-    const pkts = events.filter(e => e.type==='sendPacket' && t_ns>=e.t0_ns && t_ns<=e.t1_ns)
+    const pkts = events.filter(e => e.type==='sendPacket' && t_ns>=e.t0_ns && t_ns<e.t1_ns)
       .map(e => {
         const p = posForPacket(e, t_ns, bounds);
         if (!p) return null;
-        return { id:`pkt-${e.from}-${e.to}-${e.t0_ns}`, x:p.x, y:p.y, label:(e.label||'') };
+        const color = PACKET_COLORS[(e.protocol||'').toLowerCase()] || 'var(--classic)';
+        return { id:`pkt-${e.from}-${e.to}-${e.t0_ns}`, x:p.x, y:p.y, label:(e.label||''), color };
       }).filter(Boolean);
 
     const p = pktG.selectAll('g.pktg').data(pkts, d=>d.id);
     const pe = p.enter().append('g').attr('class','pktg');
-    pe.append('circle').attr('class','pkt').attr('r',8);
-    pe.append('text').attr('class','label').attr('dy', -12).attr('text-anchor','middle');
+    pe.append('rect').attr('class','pkt')
+        .attr('x', -7).attr('y', -7).attr('width', 14).attr('height', 14)
+        .attr('transform', 'rotate(45)');
+    pe.append('text').attr('class','label').attr('dy', -14).attr('text-anchor','middle');
     p.merge(pe).attr('transform', d=>`translate(${d.x},${d.y})`);
+    p.merge(pe).select('rect.pkt').style('fill', d => d.color);
     p.merge(pe).select('text.label').text(d=>d.label);
     p.exit().remove();
+  }
+
+  // Draw in-flight classical bits (sendCbit) as classical packet diamonds.
+  function drawInflightCbits(pktG, bounds, t_ns, removedCbits = new Set()) {
+    const SZ = 7;
+    const flights = events
+      .filter(e => e.type === 'sendCbit' && t_ns >= e.t0_ns && t_ns < e.t1_ns)
+      .filter(e => !removedCbits.has(e.bit))
+      .map(e => {
+        const p = posForPacket(e, t_ns, bounds);
+        if (!p) return null;
+        return { id: `cbit-${e.bit}-${e.t0_ns}`, x: p.x, y: p.y, color: 'var(--classic)' };
+      })
+      .filter(Boolean);
+
+    const sel = pktG.selectAll('g.inflightCbit').data(flights, d => d.id);
+    const enter = sel.enter().append('g').attr('class', 'inflightCbit');
+    enter.append('rect')
+      .attr('x', -SZ).attr('y', -SZ)
+      .attr('width', SZ*2).attr('height', SZ*2)
+      .attr('transform', 'rotate(45)')
+      .attr('stroke', '#fff').attr('stroke-width', 1);
+
+    sel.merge(enter).attr('transform', d => `translate(${d.x},${d.y})`);
+    sel.merge(enter).select('rect').attr('fill', d => d.color);
+    sel.exit().remove();
   }
 
   // --- Node-local text ---
@@ -1853,14 +1875,19 @@
 
         const inflightBits = new Set(
           events
-            .filter(e => e.type === 'sendBit' && t_ns >= e.t0_ns && t_ns <= e.t1_ns)
+            .filter(e => e.type === 'sendQubit' && t_ns >= e.t0_ns && t_ns < e.t1_ns)
             .map(e => e.bit)
         );
 
         // Identify qubits that have been removed from the simulation
         const removedBits = new Set(
-          events.filter(e => e.type === 'removeBit' && e.t_ns <= t_ns)
+          events.filter(e => e.type === 'removeQubit' && e.t_ns <= t_ns)
                 .map(e => e.bit)
+        );
+
+        const removedCbits = new Set(
+          events.filter(e => e.type === 'removeCbit' && e.t_ns <= t_ns)
+          .map(e => e.bit)
         );
 
         // Render network structure and quantum storage
@@ -1875,6 +1902,7 @@
         // Render moving elements
         drawInflightBits(linkG, bounds, t_ns, removedBits);
         drawPackets(pktG, bounds, t_ns);
+        drawInflightCbits(pktG, bounds, t_ns, removedCbits);
 
         // Update user interface elements
         drawTracePanel(t_ns);

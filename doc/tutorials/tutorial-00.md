@@ -1,6 +1,8 @@
 # Q2NS Tutorial 0: The Visualizer {#q2ns_tutorial_visualizer}
 
-This tutorial introduces the Q2NS network visualizer -- a browser-based tool that replays recorded quantum network simulations. You can use it to explore what happens in a quantum network without writing a single line of code.
+This tutorial introduces the Q2NS network visualizer -- a portable browser-based tool that replays recorded quantum network simulations. You can use it to explore what happens in a quantum network without writing a single line of code.
+
+> Q2NSViz GUI is also available in python! Check out the official repository [here](https://github.com/QuantumInternet-it/q2nsviz).
 
 **No programming required!**
 
@@ -27,9 +29,9 @@ A Q2NS simulation can therefore model:
 
 ---
 
-## 2. What Is the Q2NSViz Visualizer?
+## 2. What Is the (portable) Q2NSViz Visualizer?
 
-The **Q2NSViz** visualizer is a single HTML page that replays a Q2NS simulation trace in your browser. The trace is a JSON-lines file (`.json`) that was produced automatically while the simulation ran.
+The portable, browser-based **Q2NSViz** visualizer is a single HTML page that replays a Q2NS simulation trace in your browser. The trace is a JSON-lines file (`.json`) that was produced automatically while the simulation ran.
 
 The visualizer shows:
 
@@ -90,7 +92,8 @@ Four pre-recorded traces are provided:
 | ------------------------------------------------ | -------------------------------------------------- |
 | `q2nsviz-teleportation-example.json`             | Quantum teleportation (Alice -> Bob)               |
 | `q2nsviz-entanglement-distribution-example.json` | Bell pair distribution across 3 nodes              |
-| `q2nsviz-ghz-distribution-example.json`          | GHZ state distribution across 4 nodes              |
+| `q2nsviz-channel-loss-example.json`              | Distribution over lossy channel (Alice -> Bob)     |
+| `q2nsviz-repeater-swap-example.json`             | Swap with Ent. Sources (Alice <-> Repeater <-> Bob)|
 | `q2nsviz-graphstate-gen-example.json`            | Distributed graph state (Orchestrator + 3 Clients) |
 
 Select any one of them and the simulation will load instantly.
@@ -141,28 +144,41 @@ Watch how each Bell pair is created at the source node, one qubit is kept locall
 
 ---
 
-## 7. Walkthrough: GHZ State Distribution
+## 7. Walkthrough: Entanglement Distribution over lossy channel
 
-Load `q2nsviz-ghz-distribution-example.json`.
+Load `q2nsviz-channel-loss-example.json`.
 
-Four nodes are arranged in a **star** topology: Node1 is the central node connected to Node2, Node3, and Node4 by both quantum and classical links. Node1 creates a **GHZ state**:
+You will see **two nodes** (Node1, Node2, Node3) connected by a lossy channel, with loss probability $p=0.8$.
 
-$$|GHZ_4\rangle = \frac{|0000\rangle + |1111\rangle}{\sqrt{2}}$$
+The simulation shows multiple distribution attempts (random) until Alice and Bob successfully share an entangled state:
 
-which is a genuinely multipartite entangled state.
+Watch how each Bell pair is created at the source node (qubits labeled `mem_N`/`fly_N`): the memory qubit `mem_N` is kept locally and the flying qubit `fly_N` is sent along the quantum channel. The source also sends a classical `notify: attempt N` packet together with the qubit, which arms a receive-timeout at the destination.
 
-**Steps:**
-
-1. Node1 creates qubits `q0`--`q3` (all blue).
-2. Node1 applies a **Hadamard gate** to `q0` (color changes to purple, indicating superposition).
-3. Node1 applies **CNOT gates** between `q0` and each of `q1`, `q2`, `q3` -- entanglement arcs connect all four qubits.
-4. Node1 sends `q1` to Node2, `q2` to Node3, and `q3` to Node4.
-5. Each remote node receives its qubit and sends a classical **ACK** back to Node1 -- visible as packets animated along the classical channels.
-6. Node1 collects all three ACKs. Once confirmed, the entanglement links span across the network -- nodes that have never interacted directly are now all part of the same multi-qubit entangled state.
+As the flying qubit arrives, the receiving node sends a classical **ACK** (`ACK: fly_N`) back to the sender -- animated along the dashed orange channel -- confirming delivery. If the qubit is lost over the channel, the receive-timeout fires and the destination sends back a **timeout signal** (`timeout: attempt N`).
 
 ---
 
-## 8. Walkthrough: Distributed Graph State
+## 8. Walkthrough: Repeater Swapping with Entanglement Sources
+
+Load `q2nsviz-repeater-swap-example.json`.
+
+You will see **five nodes**, a sender and a receiver (Alice and Bob) interconnected by a quantum repeater through a classical channel. At the same time, two entanglement sources prepare and share a Bell state with the repeater and the sender and the receiver respectively:
+
+- **Source1 <-> Alice** quantum channel
+- **Source1 <-> Repeater** quantum channel
+- **Source2 <-> Repeater** quantum channel
+- **Source2 <-> Bob** quantum channel
+- **Alice <-> Repeater** classical channel
+- **Bob <-> Repeater** classical channel
+
+The simulation shows how entanglement is generated and distributed by the entanglement source, enabling an entanglement swapping protocol between Alice and Bob through the repeater.
+
+As the entanglement source generates the Bell states, they are distributed over (ideal) channels to the repeater and Alice and Bob respectively. When the qubit arrives, the nodes communicate classically to the repeater that they are ready for the swapping.
+When the repeater receives both the **ACKs** it performs the BSM and send the corrections to Bob, thus completing the entanglement swapping protocol and entangling Alice and Bob.
+
+---
+
+## 9. Walkthrough: Distributed Graph State
 
 Load `q2nsviz-graphstate-gen-example.json`.
 
@@ -199,14 +215,16 @@ Every event in the JSON trace corresponds to something you can see in the visual
 | -------------------- | ---------------------------------------------------------------------------- |
 | `createNode`         | A new node box appears                                                       |
 | `createChannel`      | A line connecting two nodes (purple = quantum, dashed orange = classical)    |
-| `createBit`          | A colored circle appears inside a node                                       |
-| `setBitColor`        | A qubit changes color (reflects a gate or state change)                      |
+| `createQubit`        | A qubit appears inside a node                                                |
 | `entangle`           | A link connects two or more qubits                                           |
-| `sendBit`            | A qubit circle animates from one node to another                             |
+| `sendQubit`          | A qubit circle animates from one node to another                             |
+| `removeQubit`        | A qubit disappears (reason: `"discarded"` or `"lost"`)                       |
+| `createCbit`         | A classical bit square appears inside a node (measurement outcome)           |
+| `sendCbit`           | A classical bit square animates along the classical channel                  |
+| `removeCbit`         | A classical bit disappears (delivered to destination)                        |
 | `sendPacket`         | A classical packet label animates along the classical channel                |
 | `measure`            | A qubit collapses (circle shrinks/fades) and the result appears in the trace |
 | `graphMeasure`       | Like `measure` but highlights the graph neighbors affected                   |
-| `removeBit`          | A qubit disappears (consumed by measurement)                                 |
 | `traceText` (global) | A message appears in the persistent control panel                            |
 | `traceText` (node)   | A message appears briefly next to the node                                   |
 
@@ -227,10 +245,24 @@ TraceWriter::Instance().Open("my-trace.json");
 TraceCreateNode("Alice", 25, 50);
 TraceCreateNode("Bob",   75, 50);
 TraceCreateChannel("Alice", "Bob", "quantum");
-TraceCreateBit("Alice", "q0", "quantum", "#88CCEE");
+TraceCreateChannel("Alice", "Bob", "classical");
+TraceCreateQubit("Alice", "q0");
 TraceEntangle({"q0", "q1"});
-TraceSendBit(sendTime, recvTime, "q1", "Alice", "Bob", "quantum");
+TraceSendQubit("q1", "Alice", "Bob", sendTime, recvTime);
+TraceRemoveQubit("q0", "discarded");
+
+// Classical bit (e.g. measurement outcome)
+TraceCreateCbit("Alice", "m1");
+TraceSendCbit("m1", "Alice", "Bob", sendTime, recvTime);
+TraceRemoveCbit("m1");
+
 TraceMeasure("q0", "Z");
+
+// Persistent trace-panel message (global HUD --- appears in the control panel)
+Trace("Bell pair distributed between Alice and Bob");
+
+// Node-local annotation
+TraceNodeText("Bob", "eprB arrived - half of Bell pair received");
 
 // Close
 TraceWriter::Instance().Close();

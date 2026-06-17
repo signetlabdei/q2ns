@@ -65,8 +65,7 @@ int main(int argc, char** argv) {
   CommandLine cmd;
   cmd.Parse(argc, argv);
 
-  TraceWriter::Instance().Open(
-      "examples/example_traces/q2nsviz-entanglement-distribution-example.json");
+  TraceWriter::Instance().Open(Q2NS_EXAMPLE_TRACES_DIR "q2nsviz-entanglement-distribution-example.json");
 
   Trace("Entanglement Distribution with 3 nodes");
 
@@ -105,6 +104,10 @@ int main(int argc, char** argv) {
   TraceCreateChannel("Node1", "Node3", "classical");
   TraceCreateChannel("Node2", "Node3", "quantum");
   TraceCreateChannel("Node2", "Node3", "classical");
+  // Reverse classical channels for ACK traffic
+  TraceCreateChannel("Node2", "Node1", "classical");
+  TraceCreateChannel("Node3", "Node1", "classical");
+  TraceCreateChannel("Node3", "Node2", "classical");
 
   // --- Classical network (full mesh p2p) ---
   InternetStackHelper internet;
@@ -176,12 +179,11 @@ int main(int argc, char** argv) {
 
   // Node2 qubit-receive callback (Bell pair 0: q0b arrives from Node1)
   node2->SetRecvCallback([&](std::shared_ptr<Qubit> q) {
-    TraceSetBitColor(q->GetLabel(), "#90EE90");
     TraceNodeText("Node2", StrCat("Qubit ", q->GetLabel(), " arrived - entangled with Node1"));
     std::cout << "[NODE2] Qubit " << q->GetLabel() << " arrived\n";
     node2TxSock->Send(Create<Packet>(1));
     TraceSendPacket("Node2", "Node1", Simulator::Now(), Simulator::Now() + kClassical,
-                    StrCat("ACK: ", q->GetLabel(), " received"));
+                    StrCat("ACK: ", q->GetLabel(), " received"), "udp");
   });
 
   // Node3 qubit-receive callback (Bell pairs 1 and 2 arrive)
@@ -189,17 +191,16 @@ int main(int argc, char** argv) {
   int node3QubitCount = 0;
   node3->SetRecvCallback([&](std::shared_ptr<Qubit> q) {
     ++node3QubitCount;
-    TraceSetBitColor(q->GetLabel(), "#90EE90");
     TraceNodeText("Node3", StrCat("Qubit ", q->GetLabel(), " arrived (", node3QubitCount, "/2)"));
     std::cout << "[NODE3] Qubit " << q->GetLabel() << " arrived\n";
     if (node3QubitCount == 1) {
       node3ToNode1Sock->Send(Create<Packet>(1));
       TraceSendPacket("Node3", "Node1", Simulator::Now(), Simulator::Now() + kClassical,
-                      StrCat("ACK: ", q->GetLabel(), " received"));
+                      StrCat("ACK: ", q->GetLabel(), " received"), "udp");
     } else {
       node3ToNode2Sock->Send(Create<Packet>(1));
       TraceSendPacket("Node3", "Node2", Simulator::Now(), Simulator::Now() + kClassical,
-                      StrCat("ACK: ", q->GetLabel(), " received"));
+                      StrCat("ACK: ", q->GetLabel(), " received"), "udp");
     }
   });
 
@@ -213,13 +214,12 @@ int main(int argc, char** argv) {
     auto q0b = node1->CreateQubit();
     q0b->SetLabel("bell_0_b");
 
-    TraceCreateBit("Node1", "bell_0_a", "quantum", "#88CCEE");
-    TraceCreateBit("Node1", "bell_0_b", "quantum", "#88CCEE");
+    TraceCreateQubit("Node1", "bell_0_a");
+    TraceCreateQubit("Node1", "bell_0_b");
 
     // T + 100 ns: H(q0a)
     Simulator::Schedule(kSingleGate, [=]() {
       node1->Apply(gates::H(), {q0a});
-      TraceSetBitColor("bell_0_a", "#BC71EB");
       TraceNodeText("Node1", "H(bell_0_a)");
 
       // T + 400 ns: CNOT(q0a, q0b) -> |Phi+>
@@ -232,9 +232,8 @@ int main(int argc, char** argv) {
         Simulator::Schedule(kSingleGate, [=]() {
           auto t0 = Simulator::Now();
           node1->Send(q0b, node2->GetId());
-          TraceSendBit("bell_0_b", "Node1", "Node2", "quantum", t0, t0 + kQDelay);
+          TraceSendQubit("bell_0_b", "Node1", "Node2", t0, t0 + kQDelay);
           TraceNodeText("Node1", "bell_0_b in transit to Node2");
-          TraceSetBitColor("bell_0_a", "#90EE90");
           std::cout << "[STEP 1] Bell pair 0 sent: Node1 -> Node2\n";
         });
       });
@@ -252,12 +251,11 @@ int main(int argc, char** argv) {
     auto q1b = node1->CreateQubit();
     q1b->SetLabel("bell_1_b");
 
-    TraceCreateBit("Node1", "bell_1_a", "quantum", "#88CCEE");
-    TraceCreateBit("Node1", "bell_1_b", "quantum", "#88CCEE");
+    TraceCreateQubit("Node1", "bell_1_a");
+    TraceCreateQubit("Node1", "bell_1_b");
 
     Simulator::Schedule(kSingleGate, [=]() {
       node1->Apply(gates::H(), {q1a});
-      TraceSetBitColor("bell_1_a", "#BC71EB");
       TraceNodeText("Node1", "H(bell_1_a)");
 
       Simulator::Schedule(kTwoQGate, [=]() {
@@ -268,9 +266,8 @@ int main(int argc, char** argv) {
         Simulator::Schedule(kSingleGate, [=]() {
           auto t0 = Simulator::Now();
           node1->Send(q1b, node3->GetId());
-          TraceSendBit("bell_1_b", "Node1", "Node3", "quantum", t0, t0 + kQDelay);
+          TraceSendQubit("bell_1_b", "Node1", "Node3", t0, t0 + kQDelay);
           TraceNodeText("Node1", "bell_1_b in transit to Node3");
-          TraceSetBitColor("bell_1_a", "#90EE90");
           std::cout << "[STEP 2] Bell pair 1 sent: Node1 -> Node3\n";
         });
       });
@@ -287,12 +284,11 @@ int main(int argc, char** argv) {
     auto q2b = node2->CreateQubit();
     q2b->SetLabel("bell_2_b");
 
-    TraceCreateBit("Node2", "bell_2_a", "quantum", "#88CCEE");
-    TraceCreateBit("Node2", "bell_2_b", "quantum", "#88CCEE");
+    TraceCreateQubit("Node2", "bell_2_a");
+    TraceCreateQubit("Node2", "bell_2_b");
 
     Simulator::Schedule(kSingleGate, [=]() {
       node2->Apply(gates::H(), {q2a});
-      TraceSetBitColor("bell_2_a", "#BC71EB");
       TraceNodeText("Node2", "H(bell_2_a)");
 
       Simulator::Schedule(kTwoQGate, [=]() {
@@ -303,9 +299,8 @@ int main(int argc, char** argv) {
         Simulator::Schedule(kSingleGate, [=]() {
           auto t0 = Simulator::Now();
           node2->Send(q2b, node3->GetId());
-          TraceSendBit("bell_2_b", "Node2", "Node3", "quantum", t0, t0 + kQDelay);
+          TraceSendQubit("bell_2_b", "Node2", "Node3", t0, t0 + kQDelay);
           TraceNodeText("Node2", "bell_2_b in transit to Node3");
-          TraceSetBitColor("bell_2_a", "#90EE90");
           std::cout << "[STEP 3] Bell pair 2 sent: Node2 -> Node3\n";
         });
       });
@@ -314,7 +309,7 @@ int main(int argc, char** argv) {
 
   // --- Final trace at 20 us (all ACKs have arrived by ~16 us) ---
   Simulator::Schedule(MicroSeconds(20), [&] {
-    Trace("All Bell pairs distributed and confirmed - full-mesh entanglement established");
+    Trace("All pairwise Bell pairs established - 3 independent bipartite entangled links");
     std::cout << "[DONE] All Bell pairs distributed\n";
   });
 

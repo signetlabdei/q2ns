@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
   CommandLine cmd;
   cmd.Parse(argc, argv);
 
-  TraceWriter::Instance().Open("examples/example_traces/q2nsviz-teleportation-example.json");
+  TraceWriter::Instance().Open(Q2NS_EXAMPLE_TRACES_DIR "q2nsviz-teleportation-example.json");
 
   Time::SetResolution(Time::NS);
 
@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
     if (!bobCtx.qubitArrived || !bobCtx.bitsArrived)
       return;
 
-    Trace("Bob applies Pauli corrections Z^m", bobCtx.m1, " X^m", bobCtx.m2);
+Trace("Bob applies Pauli corrections Z^m1=", bobCtx.m1, " X^m2=", bobCtx.m2);
 
     // Apply Z correction (if needed) as an explicit gate step
     if (bobCtx.m1) {
@@ -134,13 +134,13 @@ int main(int argc, char** argv) {
     }
 
     // Teleportation complete: bob_epr now holds the teleported psi state.
-    TraceSetBitColor("bob_epr", "#DDCC77");
     TraceNodeText("Bob", "Teleportation complete - eprB holds psi state");
 
     // Verify: |+> -> X-measurement should always yield 0
     Trace("Bob verifies teleported state (X-basis)");
     int mx = bob->Measure(bobCtx.eprB, Basis::X);
     TraceMeasure("bob_epr", kSingleGate, "X");
+    TraceRemoveQubit("bob_epr", "discarded");
     TraceNodeText("Bob", StrCat("X-measure: ", mx, " (expected 0 -> |+> received)"));
     std::cout << "[VERIFY] Bob's X-measure: " << mx << " (expected 0)\n";
 
@@ -152,7 +152,6 @@ int main(int argc, char** argv) {
     Trace("Bob receives eprB");
     bobCtx.eprB = q;
     bobCtx.qubitArrived = true;
-    TraceSetBitColor("bob_epr", "#117733");
     TraceNodeText("Bob", "eprB arrived - half of Bell pair received");
     std::cout << "[B][quantum] eprB arrived at t=" << Simulator::Now().GetNanoSeconds() << " ns\n";
     tryCorrections();
@@ -171,6 +170,8 @@ int main(int argc, char** argv) {
       Trace("Bob receives classical corrections m1=", bobCtx.m1, " m2=", bobCtx.m2);
       TraceNodeText("Bob", StrCat("Corrections received: m1=", bobCtx.m1, " m2=", bobCtx.m2));
       std::cout << "[B][CTRL] Corrections arrived: m1=" << bobCtx.m1 << " m2=" << bobCtx.m2 << "\n";
+      TraceRemoveCbit("m1");
+      TraceRemoveCbit("m2");
       tryCorrections();
     }
   });
@@ -184,15 +185,14 @@ int main(int argc, char** argv) {
 
     auto eprA = alice->CreateQubit();
     auto eprB = alice->CreateQubit();
-    TraceCreateBit("Alice", "alice_epr", "quantum", "#88CCEE");
-    TraceCreateBit("Alice", "bob_epr", "quantum", "#88CCEE");
+    TraceCreateQubit("Alice", "alice_epr");
+    TraceCreateQubit("Alice", "bob_epr");
     std::cout << "[A] eprA, eprB created in |0>\n";
 
     // H on eprA
     Simulator::Schedule(kSingleGate, [&, eprA, eprB]() {
       Trace("Alice applies H to eprA");
       alice->Apply(gates::H(), {eprA});
-      TraceSetBitColor("alice_epr", "#bc71eb");
       TraceNodeText("Alice", "H(eprA)");
       std::cout << "[A] H applied to eprA\n";
 
@@ -201,15 +201,13 @@ int main(int argc, char** argv) {
         Trace("Alice applies CNOT(eprA, eprB) -> Bell pair |Phi+>");
         alice->Apply(gates::CNOT(), {eprA, eprB});
         TraceEntangle({"alice_epr", "bob_epr"}, kTwoQGate);
-        TraceSetBitColor("alice_epr", "#117733");
-        TraceSetBitColor("bob_epr", "#117733");
         TraceNodeText("Alice", "CNOT(eprA, eprB): Bell pair |Phi+> ready");
         std::cout << "[A] Bell pair |Phi+> prepared\n";
 
         // Send eprB to Bob
         Simulator::Schedule(kSingleGate, [&, eprA, eprB]() {
           Trace("Alice sends eprB to Bob");
-          TraceSendBit("bob_epr", "Alice", "Bob", "quantum", Simulator::Now(),
+          TraceSendQubit("bob_epr", "Alice", "Bob", Simulator::Now(),
                        Simulator::Now() + kQDelay);
           bool ok = alice->Send(eprB, bob->GetId());
           TraceNodeText("Alice", "eprB sent - in transit to Bob (+10ns)");
@@ -224,14 +222,13 @@ int main(int argc, char** argv) {
             TraceNodeText("Alice", "Phase 2: teleportation (entanglement pre-shared)");
 
             auto psi = alice->CreateQubit();
-            TraceCreateBit("Alice", "psi", "quantum", "#DDCC77");
+            TraceCreateQubit("Alice", "psi");
             std::cout << "[A] psi created in |0>\n";
 
             // prepare |+> (the state to teleport)
             Simulator::Schedule(kSingleGate, [&, eprA, psi]() {
               Trace("Alice applies H to psi -> |+> (state to teleport)");
               alice->Apply(gates::H(), {psi});
-              TraceSetBitColor("psi", "#DDCC77");
               TraceNodeText("Alice", "H(psi): state to teleport is |+>");
               std::cout << "[A] psi prepared as |+>\n";
 
@@ -259,22 +256,24 @@ int main(int argc, char** argv) {
                     int m2 = alice->Measure(eprA); // Z-basis -> X correction at Bob
 
                     Trace("BSM outcome: m1=", m1, " m2=", m2);
-                    TraceSetBitColor("psi", m1 == 0 ? "#FFFFFF" : "#000000");
-                    TraceSetBitColor("alice_epr", m2 == 0 ? "#FFFFFF" : "#000000");
                     TraceNodeText("Alice", StrCat("BSM complete: m1=", m1, " m2=", m2));
                     std::cout << "[A][BSM] m1=" << m1 << " m2=" << m2 << "\n";
 
-                    // Send classical corrections to Bob
+                    // Send classical corrections to Bob - tracked as classical bits
+                    TraceCreateCbit("Alice", "m1");
+                    TraceCreateCbit("Alice", "m2");
                     uint8_t corrBits[2] = {(uint8_t) (m1 & 1), (uint8_t) (m2 & 1)};
                     aliceTxSocket->Send(Create<Packet>(corrBits, 2));
+                    TraceSendCbit("m1", "Alice", "Bob", Simulator::Now(), Simulator::Now() + kClassical);
+                    TraceSendCbit("m2", "Alice", "Bob", Simulator::Now(), Simulator::Now() + kClassical);
                     TraceSendPacket("Alice", "Bob", Simulator::Now(), Simulator::Now() + kClassical,
-                                    StrCat("Corrections m1=", m1, " m2=", m2));
+                                    StrCat("Corrections m1=", m1, " m2=", m2), "udp");
                     TraceNodeText("Alice", StrCat("Corrections sent: m1=", m1, " m2=", m2));
                     std::cout << "[A][CTRL] Corrections sent (~5 us delay)\n";
 
-                    // psi and eprA are consumed by measurement
-                    TraceRemoveBit("psi");
-                    TraceRemoveBit("alice_epr");
+                    // psi and eprA are consumed by BSM measurement
+                    TraceRemoveQubit("psi", "discarded");
+                    TraceRemoveQubit("alice_epr", "discarded");
                   });
                 });
               });

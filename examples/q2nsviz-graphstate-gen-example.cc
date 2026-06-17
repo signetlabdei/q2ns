@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
   cmd.Parse(argc, argv);
 
   // Visualization output
-  TraceWriter::Instance().Open("examples/example_traces/q2nsviz-graphstate-gen-example.json");
+  TraceWriter::Instance().Open(Q2NS_EXAMPLE_TRACES_DIR "q2nsviz-graphstate-gen-example.json");
 
   Time::SetResolution(Time::NS);
 
@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
       p->CopyData(&outcome, 1);
       int m = outcome & 1;
       TraceNodeText("Client1", StrCat("q1 outcome m=", m, " received - q0 ready"));
-      TraceSetBitColor("q0", "#44AA99");
+      TraceRemoveCbit("m1");
       std::cout << "[CLIENT1] q1 outcome m=" << m << " - q0 ready\n";
     }
   });
@@ -166,9 +166,11 @@ int main(int argc, char** argv) {
       int m = outcome & 1;
       ++c2OutcomesRxd;
       TraceNodeText("Client2", StrCat("outcome m=", m, " received (", c2OutcomesRxd, "/2)"));
-      if (c2OutcomesRxd == 2) {
+      if (c2OutcomesRxd == 1) {
+        TraceRemoveCbit("m1_c2");
+      } else {
+        TraceRemoveCbit("m3_c2");
         TraceNodeText("Client2", "Both outcomes received - q2 ready");
-        TraceSetBitColor("q2", "#44AA99");
       }
       std::cout << "[CLIENT2] outcome m=" << m << " (" << c2OutcomesRxd << "/2) - q2\n";
     }
@@ -183,7 +185,7 @@ int main(int argc, char** argv) {
       p->CopyData(&outcome, 1);
       int m = outcome & 1;
       TraceNodeText("Client3", StrCat("q3 outcome m=", m, " received - q4 ready"));
-      TraceSetBitColor("q4", "#44AA99");
+      TraceRemoveCbit("m3");
       std::cout << "[CLIENT3] q3 outcome m=" << m << " - q4 ready\n";
     }
   });
@@ -201,17 +203,14 @@ int main(int argc, char** argv) {
   // Corrections are triggered by the classical outcome messages.
   // The real corrections are NOT implemented in this example
   client1->SetRecvCallback([&](std::shared_ptr<Qubit> q) {
-    TraceSetBitColor(q->GetLabel(), "#AACCFF");
     TraceNodeText("Client1", StrCat(q->GetLabel(), " arrived - awaiting correction basis"));
     std::cout << "[CLIENT1] " << q->GetLabel() << " arrived\n";
   });
   client2->SetRecvCallback([&](std::shared_ptr<Qubit> q) {
-    TraceSetBitColor(q->GetLabel(), "#AACCFF");
     TraceNodeText("Client2", StrCat(q->GetLabel(), " arrived - awaiting correction basis"));
     std::cout << "[CLIENT2] " << q->GetLabel() << " arrived\n";
   });
   client3->SetRecvCallback([&](std::shared_ptr<Qubit> q) {
-    TraceSetBitColor(q->GetLabel(), "#AACCFF");
     TraceNodeText("Client3", StrCat(q->GetLabel(), " arrived - awaiting correction basis"));
     std::cout << "[CLIENT3] " << q->GetLabel() << " arrived\n";
   });
@@ -230,7 +229,7 @@ int main(int argc, char** argv) {
       auto q = orch->CreateQubit();
       q->SetLabel("q" + std::to_string(i));
       qubits.push_back(q);
-      TraceCreateBit("Orchestrator", q->GetLabel(), "quantum", "#88CCEE");
+      TraceCreateQubit("Orchestrator", q->GetLabel());
     }
 
     // Hadamard on all qubits (parallelizable)
@@ -239,7 +238,6 @@ int main(int argc, char** argv) {
       TraceNodeText("Orchestrator", "H layer (all qubits, parallel)");
       for (const auto& q : qubits) {
         orch->Apply(q2ns::gates::H(), {q});
-        TraceSetBitColor(q->GetLabel(), "#bc71eb");
       }
 
       // CZ layer 1 - CZ(q0,q1) and CZ(q2,q3)
@@ -270,9 +268,9 @@ int main(int argc, char** argv) {
 
             auto t0 = Simulator::Now();
             auto t1 = t0 + kQDelay;
-            TraceSendBit("q0", "Orchestrator", "Client1", "quantum", t0, t1);
-            TraceSendBit("q2", "Orchestrator", "Client2", "quantum", t0, t1);
-            TraceSendBit("q4", "Orchestrator", "Client3", "quantum", t0, t1);
+            TraceSendQubit("q0", "Orchestrator", "Client1", t0, t1);
+            TraceSendQubit("q2", "Orchestrator", "Client2", t0, t1);
+            TraceSendQubit("q4", "Orchestrator", "Client3", t0, t1);
 
             // Measure q1 and q3 in X-basis once client qubits have arrived
             Simulator::Schedule(kQDelay + kSingleGate, [&] {
@@ -282,14 +280,14 @@ int main(int argc, char** argv) {
               // Measure q1: neighbors are q0 (Client1) and q2 (Client2)
               auto m1 = orch->Measure(qubits[1], Basis::X);
               Trace("q1 X-measure outcome = ", m1);
-              TraceGraphMeasure("q1", kSingleGate, "X");
-              TraceRemoveBit("q1");
+              TraceGraphMeasure("q1", kSingleGate, "X", "q0");
+              TraceRemoveQubit("q1", "discarded");
 
               // Measure q3: neighbors are q2 (Client2) and q4 (Client3)
               auto m3 = orch->Measure(qubits[3], Basis::X);
               Trace("q3 X-measure outcome = ", m3);
-              TraceGraphMeasure("q3", kSingleGate, "X");
-              TraceRemoveBit("q3");
+              TraceGraphMeasure("q3", kSingleGate, "X", "q2");
+              TraceRemoveQubit("q3", "discarded");
 
               TraceNodeText("Orchestrator", "Measurements complete - sending outcomes to clients");
               const auto tNow = Simulator::Now();
@@ -297,25 +295,34 @@ int main(int argc, char** argv) {
               uint8_t m1b = (uint8_t) (m1 & 1);
               uint8_t m3b = (uint8_t) (m3 & 1);
 
+              TraceCreateCbit("Orchestrator", "m1");
+              TraceCreateCbit("Orchestrator", "m1_c2");
+              TraceCreateCbit("Orchestrator", "m3_c2");
+              TraceCreateCbit("Orchestrator", "m3");
+
               // Send m1 to Client1 (q0 is neighbor of q1)
               orchToC1->Send(Create<Packet>(&m1b, 1));
+              TraceSendCbit("m1", "Orchestrator", "Client1", tNow, tNow + kClassical);
               TraceSendPacket("Orchestrator", "Client1", tNow, tNow + kClassical,
-                              StrCat("q1 outcome: m=", m1));
+                              StrCat("q1 outcome: m=", m1), "udp");
 
               // Send m1 to Client2 (q2 is neighbor of q1)
               orchToC2->Send(Create<Packet>(&m1b, 1));
+              TraceSendCbit("m1_c2", "Orchestrator", "Client2", tNow, tNow + kClassical);
               TraceSendPacket("Orchestrator", "Client2", tNow, tNow + kClassical,
-                              StrCat("q1 outcome: m=", m1));
+                              StrCat("q1 outcome: m=", m1), "udp");
 
               // Send m3 to Client2 (q2 is neighbor of q3)
               orchToC2->Send(Create<Packet>(&m3b, 1));
+              TraceSendCbit("m3_c2", "Orchestrator", "Client2", tNow, tNow + kClassical);
               TraceSendPacket("Orchestrator", "Client2", tNow, tNow + kClassical,
-                              StrCat("q3 outcome: m=", m3));
+                              StrCat("q3 outcome: m=", m3), "udp");
 
               // Send m3 to Client3 (q4 is neighbor of q3)
               orchToC3->Send(Create<Packet>(&m3b, 1));
+              TraceSendCbit("m3", "Orchestrator", "Client3", tNow, tNow + kClassical);
               TraceSendPacket("Orchestrator", "Client3", tNow, tNow + kClassical,
-                              StrCat("q3 outcome: m=", m3));
+                              StrCat("q3 outcome: m=", m3), "udp");
             });
           });
         });

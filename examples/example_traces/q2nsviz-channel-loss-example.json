@@ -1,0 +1,73 @@
+{"type":"traceText","t_ns":0,"text":"Entanglement Distribution with Photon Loss (loss-prob=0.8 run=1)"}
+{"type":"createNode","t_ns":0,"label":"Source","x":25,"y":50}
+{"type":"createNode","t_ns":0,"label":"Destination","x":75,"y":50}
+{"type":"createChannel","t_ns":0,"from":"Source","to":"Destination","kind":"quantum"}
+{"type":"createChannel","t_ns":0,"from":"Destination","to":"Source","kind":"classical"}
+{"type":"createChannel","t_ns":0,"from":"Source","to":"Destination","kind":"classical"}
+{"type":"traceText","t_ns":1000,"text":"Attempt 1: Source generates Bell pair (mem_1, fly_1)"}
+{"type":"traceText","t_ns":1000,"node":"Source","text":"Attempt 1: generating Bell pair"}
+{"type":"createQubit","t_ns":1000,"node":"Source","label":"mem_1"}
+{"type":"createQubit","t_ns":1000,"node":"Source","label":"fly_1"}
+{"type":"traceText","t_ns":1100,"node":"Source","text":"H(mem_1)"}
+{"type":"entangle","t_ns":1400,"duration_ns":300,"bits":["mem_1","fly_1"]}
+{"type":"traceText","t_ns":1400,"node":"Source","text":"Bell pair ready: mem_1 + fly_1"}
+{"type":"sendQubit","t0_ns":1500,"t1_ns":1510,"bit":"fly_1","from":"Source","to":"Destination"}
+{"type":"sendPacket","t0_ns":1500,"t1_ns":1510,"from":"Source","to":"Destination","label":"notify: attempt 1","protocol":"udp"}
+{"type":"traceText","t_ns":1500,"node":"Source","text":"fly_1 sent (attempt 1)"}
+{"type":"traceText","t_ns":3990,"node":"Destination","text":"Expecting qubit (attempt 1)"}
+{"type":"traceText","t_ns":3995,"node":"Destination","text":"Timeout: attempt 1 - qubit lost"}
+{"type":"removeQubit","t_ns":3995,"bit":"fly_1","reason":"lost"}
+{"type":"sendPacket","t0_ns":3995,"t1_ns":4005,"from":"Destination","to":"Source","label":"timeout: attempt 1","protocol":"udp"}
+{"type":"traceText","t_ns":6565,"text":"Timeout for attempt 1 - qubit lost"}
+{"type":"traceText","t_ns":6565,"node":"Source","text":"Timeout: attempt 1 - discarding mem qubit"}
+{"type":"removeQubit","t_ns":6565,"bit":"mem_1","reason":"discarded"}
+{"type":"traceText","t_ns":6665,"text":"Attempt 2: Source generates Bell pair (mem_2, fly_2)"}
+{"type":"traceText","t_ns":6665,"node":"Source","text":"Attempt 2: generating Bell pair"}
+{"type":"createQubit","t_ns":6665,"node":"Source","label":"mem_2"}
+{"type":"createQubit","t_ns":6665,"node":"Source","label":"fly_2"}
+{"type":"traceText","t_ns":6765,"node":"Source","text":"H(mem_2)"}
+{"type":"entangle","t_ns":7065,"duration_ns":300,"bits":["mem_2","fly_2"]}
+{"type":"traceText","t_ns":7065,"node":"Source","text":"Bell pair ready: mem_2 + fly_2"}
+{"type":"sendQubit","t0_ns":7165,"t1_ns":7175,"bit":"fly_2","from":"Source","to":"Destination"}
+{"type":"sendPacket","t0_ns":7165,"t1_ns":7175,"from":"Source","to":"Destination","label":"notify: attempt 2","protocol":"udp"}
+{"type":"traceText","t_ns":7165,"node":"Source","text":"fly_2 sent (attempt 2)"}
+{"type":"traceText","t_ns":9655,"node":"Destination","text":"Expecting qubit (attempt 2)"}
+{"type":"traceText","t_ns":9660,"node":"Destination","text":"Timeout: attempt 2 - qubit lost"}
+{"type":"removeQubit","t_ns":9660,"bit":"fly_2","reason":"lost"}
+{"type":"sendPacket","t0_ns":9660,"t1_ns":9670,"from":"Destination","to":"Source","label":"timeout: attempt 2","protocol":"udp"}
+{"type":"traceText","t_ns":12230,"text":"Timeout for attempt 2 - qubit lost"}
+{"type":"traceText","t_ns":12230,"node":"Source","text":"Timeout: attempt 2 - discarding mem qubit"}
+{"type":"removeQubit","t_ns":12230,"bit":"mem_2","reason":"discarded"}
+{"type":"traceText","t_ns":12330,"text":"Attempt 3: Source generates Bell pair (mem_3, fly_3)"}
+{"type":"traceText","t_ns":12330,"node":"Source","text":"Attempt 3: generating Bell pair"}
+{"type":"createQubit","t_ns":12330,"node":"Source","label":"mem_3"}
+{"type":"createQubit","t_ns":12330,"node":"Source","label":"fly_3"}
+{"type":"traceText","t_ns":12430,"node":"Source","text":"H(mem_3)"}
+{"type":"entangle","t_ns":12730,"duration_ns":300,"bits":["mem_3","fly_3"]}
+{"type":"traceText","t_ns":12730,"node":"Source","text":"Bell pair ready: mem_3 + fly_3"}
+{"type":"sendQubit","t0_ns":12830,"t1_ns":12840,"bit":"fly_3","from":"Source","to":"Destination"}
+{"type":"sendPacket","t0_ns":12830,"t1_ns":12840,"from":"Source","to":"Destination","label":"notify: attempt 3","protocol":"udp"}
+{"type":"traceText","t_ns":12830,"node":"Source","text":"fly_3 sent (attempt 3)"}
+{"type":"traceText","t_ns":15320,"node":"Destination","text":"Expecting qubit (attempt 3)"}
+{"type":"traceText","t_ns":15325,"node":"Destination","text":"Timeout: attempt 3 - qubit lost"}
+{"type":"removeQubit","t_ns":15325,"bit":"fly_3","reason":"lost"}
+{"type":"sendPacket","t0_ns":15325,"t1_ns":15335,"from":"Destination","to":"Source","label":"timeout: attempt 3","protocol":"udp"}
+{"type":"traceText","t_ns":17895,"text":"Timeout for attempt 3 - qubit lost"}
+{"type":"traceText","t_ns":17895,"node":"Source","text":"Timeout: attempt 3 - discarding mem qubit"}
+{"type":"removeQubit","t_ns":17895,"bit":"mem_3","reason":"discarded"}
+{"type":"traceText","t_ns":17995,"text":"Attempt 4: Source generates Bell pair (mem_4, fly_4)"}
+{"type":"traceText","t_ns":17995,"node":"Source","text":"Attempt 4: generating Bell pair"}
+{"type":"createQubit","t_ns":17995,"node":"Source","label":"mem_4"}
+{"type":"createQubit","t_ns":17995,"node":"Source","label":"fly_4"}
+{"type":"traceText","t_ns":18095,"node":"Source","text":"H(mem_4)"}
+{"type":"entangle","t_ns":18395,"duration_ns":300,"bits":["mem_4","fly_4"]}
+{"type":"traceText","t_ns":18395,"node":"Source","text":"Bell pair ready: mem_4 + fly_4"}
+{"type":"sendQubit","t0_ns":18495,"t1_ns":18505,"bit":"fly_4","from":"Source","to":"Destination"}
+{"type":"sendPacket","t0_ns":18495,"t1_ns":18505,"from":"Source","to":"Destination","label":"notify: attempt 4","protocol":"udp"}
+{"type":"traceText","t_ns":18495,"node":"Source","text":"fly_4 sent (attempt 4)"}
+{"type":"traceText","t_ns":18505,"node":"Destination","text":"fly_4 arrived"}
+{"type":"traceText","t_ns":18505,"text":"Destination received fly_4"}
+{"type":"sendPacket","t0_ns":18505,"t1_ns":18515,"from":"Destination","to":"Source","label":"ACK: fly_4","protocol":"udp"}
+{"type":"traceText","t_ns":20985,"node":"Destination","text":"Expecting qubit (attempt 4)"}
+{"type":"traceText","t_ns":21075,"text":"Source received ACK - entanglement established on attempt 4"}
+{"type":"traceText","t_ns":21075,"node":"Source","text":"ACK received - entanglement distributed!"}
