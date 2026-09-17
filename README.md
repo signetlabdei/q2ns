@@ -51,6 +51,9 @@ git checkout ns-3.47 # recommended
 git clone https://github.com/QuantumInternet-it/q2ns.git contrib/q2ns
 ```
 
+> [!NOTE]
+> You can easily get started with Q2NS on a variety of OSs using Docker. For an easy, comprehensive guide on how to do this go to [doc/Getting_Started_with_Q2NS_using_Docker.pdf](doc/Getting_Started_with_Q2NS_using_Docker.pdf).
+
 ### 2. Configure and build
 
 ```bash
@@ -127,7 +130,7 @@ For full details on versions, licensing, and any local modifications, see: [`thi
 
 ## Visualization (q2nsviz)
 
-Q2NS can emit **trace files** (`.json` / `.ndjson`) that can be loaded and animated in a browser.
+Q2NS can emit **trace files** (`.json` / `.ndjson`) that can be loaded and animated in either the standalone desktop app or a (more limited) browser app automatically included. For the Desktop app, refer to [https://github.com/QuantumInternet-it/q2nsviz](https://github.com/QuantumInternet-it/q2nsviz).
 
 ### 1. Generate a trace
 
@@ -217,6 +220,8 @@ The following papers use, build, or motivate Q2NS. If your work belongs here, pl
 [[3]](https://doi.org/10.5281/zenodo.18980972) _Q2NS: A Modular Framework for Quantum Network Simulation in ns-3 (invited paper)_. Adam Pearson, Francesco Mazza, Marcello Caleffi, Angela Sara Cacciapuoti -- Proc. of QCNC 2026.
 
 [[4]](https://doi.org/10.48550/arXiv.2604.02112) _Q2NS Demo: a Quantum Network Simulator based on ns-3_. Francesco Mazza, Adam Pearson, Marcello Caleffi, Angela Sara Cacciapuoti -- 2026.
+
+[[5]](https://arxiv.org/abs/2608.24152) _A Dynamic-Kernel/QPacket Executable for Quantum Repeater Chains in Q2NS/ns-3_. Adam Pearson, Marcello Caleffi, Angela Sara Cacciapuoti -- To appear in Proc. of ICNS3 2026.
 
 <!-- Add further entries in the format above as new papers appear. -->
 
