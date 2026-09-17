@@ -52,7 +52,7 @@ git clone https://github.com/QuantumInternet-it/q2ns.git contrib/q2ns
 ```
 
 > [!NOTE]
-> You can easily get started with Q2NS on a variety of OSs using Docker. For an easy, comprehensive guide on how to do this go to [doc/Getting_Started_with_Q2NS_using_Docker.pdf](doc/Getting_Started_with_Q2NS_using_Docker.pdf).
+> You can easily get started with Q2NS on a variety of OSs using Docker. For an easy, comprehensive guide on how to do this go to [doc/q2ns-docker-guide.md](doc/q2ns-docker-guide.md).
 
 ### 2. Configure and build
 
