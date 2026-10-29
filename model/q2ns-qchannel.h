@@ -269,19 +269,25 @@ protected:
    */
   ~QChannel() override = default;
 
-private:
   /**
-   * @brief Send a qubit from one endpoint to the opposite endpoint.
-   *
-   * The source device must be one of the two attached endpoints. The direction-
-   * specific delay, jitter, and QMap are selected from that source endpoint.
-   * Delivery is scheduled after the resulting propagation delay.
-   *
-   * @param src Source device. Must be either endpoint A or endpoint B.
-   * @param q Qubit to transmit.
-   * @return True if the transmission request was accepted, false otherwise.
+   * @brief Virtual send interface allowing subclasses (like QdlFsoQChannel)
+   * to dynamically update channel delay, map sampling, or losses per send.
    */
-  bool SendFrom(QNetDevice* src, std::shared_ptr<Qubit> q);
+  virtual bool SendFrom(QNetDevice* src, std::shared_ptr<Qubit> q);
+
+private:
+//   /**
+//    * @brief Send a qubit from one endpoint to the opposite endpoint.
+//    *
+//    * The source device must be one of the two attached endpoints. The direction-
+//    * specific delay, jitter, and QMap are selected from that source endpoint.
+//    * Delivery is scheduled after the resulting propagation delay.
+//    *
+//    * @param src Source device. Must be either endpoint A or endpoint B.
+//    * @param q Qubit to transmit.
+//    * @return True if the transmission request was accepted, false otherwise.
+//    */
+//   bool SendFrom(QNetDevice* src, std::shared_ptr<Qubit> q);
 
   ns3::Ptr<QNetDevice> aDev_; //!< Device attached to endpoint A.
   ns3::Ptr<QNetDevice> bDev_; //!< Device attached to endpoint B.

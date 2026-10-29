@@ -147,5 +147,17 @@ void QNode::AdoptQubit(const std::shared_ptr<Qubit>& q) {
 }
 
 
+uint32_t QNode::GetInterfaceFromId(uint32_t id){
+  return networker_->DoGetInterfaceFromId(id);
+}
+
+uint32_t QNode::AddInterface(ns3::Ptr<ns3::NetDevice> dev){
+  return networker_->AddInterface(dev);
+}
+
+void QNode::ConnectNetworkerTraces(const ns3::CallbackBase& cb_rx, const ns3::CallbackBase& cb_lost){
+	networker_->ConnectRxTrace(cb_rx);
+	networker_->ConnectLostTrace(cb_lost);
+}
 
 } // namespace q2ns

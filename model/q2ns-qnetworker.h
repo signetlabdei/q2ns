@@ -16,6 +16,7 @@
 
 #include "ns3/callback.h"
 #include "ns3/ptr.h"
+#include "ns3/traced-callback.h"
 
 #include "ns3/q2ns-types.h"
 
@@ -115,6 +116,22 @@ public:
    */
   void SetRecvCallback(RecvCallback cb);
 
+    /**
+   * @brief Connect a sink to the Rx trace.
+   *
+   * Fired in ReceiveFromDevice for each qubit that survived the channel map, before the
+   * application receive callback. Signature: void(std::shared_ptr<Qubit> q, uint32_t nodeId).
+   */
+  void ConnectRxTrace(const ns3::CallbackBase& cb);
+
+  /**
+   * @brief Connect a sink to the Lost trace.
+   *
+   * Fired in ReceiveFromDevice for each qubit marked lost by the channel map.
+   * Signature: void(std::shared_ptr<Qubit> q, uint32_t nodeId).
+   */
+  void ConnectLostTrace(const ns3::CallbackBase& cb);
+
   /**
    * @brief Get the registered outgoing interfaces.
    * @return Read-only reference to the interface table.
@@ -123,11 +140,18 @@ public:
     return m_ifaces;
   }
 
+  uint32_t DoGetInterfaceFromId(uint32_t id){
+    return m_hostRoutes[id];
+  }
+
 private:
   QNode& owner_; //!< Owning node.
 
   std::vector<ns3::Ptr<QNetDevice>> m_ifaces;          //!< Outgoing interfaces by index.
   std::unordered_map<uint32_t, uint32_t> m_hostRoutes; //!< Host routes: dst node id to oif.
   RecvCallback recvCallback_;                          //!< Application-level receive callback.
+
+  ns3::TracedCallback<std::shared_ptr<Qubit>, ns3::Ptr<QNode>> m_qubitRxedTrace;   //!< (qubit, receiving node id)
+  ns3::TracedCallback<std::shared_ptr<Qubit>, ns3::Ptr<QNode>> m_qubitLostTrace; //!< (qubit, intended receiver node id)
 };
 } // namespace q2ns

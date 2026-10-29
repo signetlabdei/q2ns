@@ -34,7 +34,7 @@ QNetworker::QNetworker(QNode& owner) : owner_(owner) {}
 
 uint32_t QNetworker::AddInterface(ns3::Ptr<ns3::NetDevice> dev) {
 
-  ns3::Ptr<QNetDevice> qdev = DynamicCast<QNetDevice>(dev);
+  ns3::Ptr<QNetDevice> qdev = ns3::DynamicCast<QNetDevice>(dev);
   NS_ABORT_MSG_IF(qdev == nullptr, "QNetworker requires QNetDevice interfaces");
   m_ifaces.push_back(qdev);
 
@@ -113,7 +113,16 @@ void QNetworker::ReceiveFromDevice(std::shared_ptr<Qubit> q, const QMapInstance&
   }
 
   const auto loc = q->GetLocation();
-  if (loc.type != LocationType::Lost && !recvCallback_.IsNull()) {
+  
+  if (loc.type == LocationType::Lost) {
+    m_qubitLostTrace(q, ns3::Ptr<QNode>(&owner_));
+    return;
+  }
+
+  // Fired before the user callback, so the qubit is still intact for the sinks
+  m_qubitRxedTrace(q, ns3::Ptr<QNode>(&owner_));
+
+  if (!recvCallback_.IsNull()) {
     recvCallback_(q);
   }
 }
@@ -122,6 +131,15 @@ void QNetworker::ReceiveFromDevice(std::shared_ptr<Qubit> q, const QMapInstance&
 
 void QNetworker::SetRecvCallback(RecvCallback cb) {
   recvCallback_ = std::move(cb);
+}
+
+
+void QNetworker::ConnectRxTrace(const ns3::CallbackBase& cb) {
+  m_qubitRxedTrace.ConnectWithoutContext(cb);
+}
+
+void QNetworker::ConnectLostTrace(const ns3::CallbackBase& cb) {
+  m_qubitLostTrace.ConnectWithoutContext(cb);
 }
 
 } // namespace q2ns

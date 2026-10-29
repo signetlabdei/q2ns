@@ -241,6 +241,13 @@ public:
    */
   std::pair<int, int> MeasureBell(const std::shared_ptr<Qubit>& a, const std::shared_ptr<Qubit>& b);
 
+  
+  uint32_t GetInterfaceFromId(uint32_t id);
+
+  uint32_t AddInterface(ns3::Ptr<ns3::NetDevice> dev);
+
+  void ConnectNetworkerTraces(const ns3::CallbackBase& cb_rx, const ns3::CallbackBase& cb_lost);
+
 private:
   /**
    * @brief Mark a qubit as local to this node.
